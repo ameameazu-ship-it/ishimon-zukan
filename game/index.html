@@ -824,7 +824,7 @@ const formatPlace = (name) => {
   if (pref && muni) return pref + ' ' + muni;
   return pref || name || '';
 };
-const APP_VERSION = '2.83.0';
+const APP_VERSION = '2.84.0';
 const IS_BETA = true; // §3: ベータ版フラグ
 
 // ===== ポリシー・規約のバージョン管理 (v2.13.0で追加) =====
@@ -1556,7 +1556,7 @@ const fallbackMon = (color, difficulty = 'normal') => {
   }
   // 難易度バイアスを適用（かんたん:上振れ / むずかしい:下振れ）
   rarity = adjustRarityByDifficulty(rarity, difficulty);
-  const shiny = Math.random() < 0.02; // v2.79.0: 色違い抽選（1/50）
+  const shiny = Math.random() < 0.05; // v2.84.0: 色違い抽選（1/20）
   const total = 180 + rarity * 50;
   const split = (total) => {
     const a = 0.2 + Math.random() * 0.4;
@@ -4620,7 +4620,7 @@ function IshimonZukan() {
       });
       delete mon.typeHints; delete mon.stoneness;
       // v2.79.0: 色違い抽選（1/50）。画像生成より前に決めること
-      if (Math.random() < 0.02) mon.shiny = true; // v2.79.0: 色違い抽選（1/50）
+      if (Math.random() < 0.05) mon.shiny = true; // v2.84.0: 色違い抽選（1/20）。1/50では大半のユーザーが一度も遭遇できなかった
 
       // not_stone チェック — 削除（2026-05-25）
       // 「何を石モン化するかはユーザーに委ねる」設計思想のため、判定そのものを廃止。
