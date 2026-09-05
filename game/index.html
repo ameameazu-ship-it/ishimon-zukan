@@ -852,7 +852,7 @@ const formatPlace = (name) => {
   if (pref && muni) return pref + ' ' + muni;
   return pref || name || '';
 };
-const APP_VERSION = '2.87.0';
+const APP_VERSION = '2.88.0';
 const IS_BETA = true; // §3: ベータ版フラグ
 
 // ===== ポリシー・規約のバージョン管理 (v2.13.0で追加) =====
@@ -1749,29 +1749,31 @@ const getRarityLabel = (r) => {
 //   プロンプト側のレア度ダイヤル(gem accents/crown)が効かない。レア度表現はシステム側へ寄せる。
 //   設計の要点: ★3で「飾りが付く」、★4で「動き出す」の2つの境界を作る。
 //   トップレベル定義にしてApp内再定義による再マウントを避ける。
-const RarityFrame = ({ rarity, color, glow }) => {
+//   v2.88.0: 角丸はradiusで受け取る。絶対配置の子はボーダーの内側に置かれるため、
+//   rounded-2xl(16px)をそのまま使うと親の角と合わずに歪んで見える。
+const RarityFrame = ({ rarity, color, glow, radius = 13 }) => {
   if (!rarity || rarity < 3) return null;
+  const rd = typeof radius === 'number' ? `${radius}px` : radius;
   return (
     <React.Fragment>
-      {/* ★3以上: 内側の白リング + タイプ色の内向きグロー */}
-      <div className="absolute inset-0 rounded-2xl pointer-events-none z-10"
-        style={{ boxShadow: `inset 0 0 0 1.5px rgba(255,255,255,0.6), inset 0 0 12px ${glow}55` }} />
-      {/* ★3は静止 / ★4以上はゆっくり明滅 */}
-      <div className="absolute inset-0 rounded-2xl pointer-events-none z-10"
-        style={{
-          boxShadow: `inset 0 0 0 3px ${color}`,
-          opacity: rarity >= 4 ? 1 : 0.85,
-          animation: rarity >= 4 ? 'ishimonRarePulse 2.2s ease-in-out infinite' : undefined,
-        }} />
+      {/* ★3以上: 白い縁取りを画像の上に重ねて「額装されている」感を出す */}
+      <div className="absolute inset-0 pointer-events-none z-10"
+        style={{ borderRadius: rd, boxShadow: `inset 0 0 0 2px rgba(255,255,255,0.85), inset 0 0 16px ${glow}99` }} />
+      {/* ★4以上: 色付きリングがゆっくり明滅する */}
+      {rarity >= 4 && (
+        <div className="absolute inset-0 pointer-events-none z-10"
+          style={{ borderRadius: rd, boxShadow: `inset 0 0 0 4px ${color}, inset 0 0 22px ${color}`,
+                   animation: 'ishimonRarePulse 2.2s ease-in-out infinite' }} />
+      )}
       {/* ★5のみ: 金の追加リング + 光の帯が流れる */}
       {rarity >= 5 && (
         <React.Fragment>
-          <div className="absolute inset-0 rounded-2xl pointer-events-none z-10"
-            style={{ boxShadow: 'inset 0 0 0 1px #FFF3B0, inset 0 0 18px rgba(255,215,0,0.55)' }} />
-          <div className="absolute inset-0 rounded-2xl pointer-events-none overflow-hidden z-10">
+          <div className="absolute inset-0 pointer-events-none z-10"
+            style={{ borderRadius: rd, boxShadow: 'inset 0 0 0 1.5px #FFF3B0, inset 0 0 20px rgba(255,215,0,0.6)' }} />
+          <div className="absolute inset-0 pointer-events-none overflow-hidden z-10" style={{ borderRadius: rd }}>
             <div style={{
               position: 'absolute', top: '-20%', bottom: '-20%', width: '34%',
-              background: 'linear-gradient(100deg, transparent, rgba(255,255,255,0.5), transparent)',
+              background: 'linear-gradient(100deg, transparent, rgba(255,255,255,0.55), transparent)',
               animation: 'ishimonRareSweep 3s linear infinite',
             }} />
           </div>
@@ -2761,9 +2763,14 @@ function CollectionView({ collection, collectionFilter, collectionSort, collecti
               return (
                 <button key={m.id} {...longPressProps}
                   className="rounded-2xl overflow-hidden active:scale-95 transition-transform relative"
-                  style={{ background: `linear-gradient(180deg, ${t.light}, ${t.bg})`, border: `${m.rarity >= 2 ? 3 : 2}px solid ${r.color}`, boxShadow: `0 3px 0 ${t.dark}`, WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' }}>
-                  {/* v2.87.0: レア度フレーム（★3以上） */}
-                  <RarityFrame rarity={m.rarity} color={r.color} glow={r.glow} />
+                  style={{ background: `linear-gradient(180deg, ${t.light}, ${t.bg})`, border: `${m.rarity >= 2 ? 3 : 2}px solid ${r.color}`,
+                    // v2.88.0: ★4以上はカードの外側も光らせる。一覧で目が勝手に高レア度へ向く。
+                    boxShadow: m.rarity >= 5 ? `0 3px 0 ${t.dark}, 0 0 16px rgba(255,215,0,0.75)`
+                             : m.rarity >= 4 ? `0 3px 0 ${t.dark}, 0 0 12px ${r.glow}AA`
+                             : `0 3px 0 ${t.dark}`,
+                    WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' }}>
+                  {/* v2.87.0: レア度フレーム（★3以上）。radiusは 16px - ボーダー幅 */}
+                  <RarityFrame rarity={m.rarity} color={r.color} glow={r.glow} radius={m.rarity >= 2 ? 13 : 14} />
                   <div className="relative">
                     {m.imagePending ? (
                       <div className="w-full h-24 flex flex-col items-center justify-center gap-0.5" style={{ background: `${t.dark}66` }}>
@@ -8512,7 +8519,13 @@ function IshimonZukan() {
           {mon.imageDataUrl ? (
             <div className="relative mb-3">
               <div className="absolute inset-0 rounded-2xl blur-xl" style={{ background: r.glow, opacity: 0.5 }} />
-              <img src={mon.imageDataUrl} className="relative w-full rounded-2xl" style={{ aspectRatio: '1/1', objectFit: 'contain', background: 'rgba(0,0,0,0.15)', border: '2px solid white', opacity: (evolvingImageId === mon.id || mon.imagePending) ? 0.12 : 1 }} />
+              <img src={mon.imageDataUrl} className="relative w-full rounded-2xl" style={{ aspectRatio: '1/1', objectFit: 'contain', background: 'rgba(0,0,0,0.15)',
+                // v2.88.0: 詳細画面もレア度で額装を変える。★3以上はレア度色の枠。
+                border: mon.rarity >= 3 ? `3px solid ${r.color}` : '2px solid white',
+                opacity: (evolvingImageId === mon.id || mon.imagePending) ? 0.12 : 1 }} />
+              {!(evolvingImageId === mon.id || mon.imagePending) && (
+                <RarityFrame rarity={mon.rarity} color={r.color} glow={r.glow} radius={16} />
+              )}
               {(evolvingImageId === mon.id || mon.imagePending) && (
                 <div className="absolute inset-0 rounded-2xl flex flex-col items-center justify-center gap-2"
                   style={{ background: 'rgba(0,0,0,0.72)', border: '2px solid #FFD700' }}>
