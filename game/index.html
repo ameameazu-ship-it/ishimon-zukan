@@ -339,6 +339,18 @@ const _monHash = (s) => {
   for (let i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
   return String(h);
 };
+// v2.86.0: ハッシュ計算専用の軽量版。画像base64(1体あたり約1.5MB)を「長さ」だけに置き換える。
+//   従来は全石モンを画像込みで文字列化して1文字ずつ走査していたため、
+//   120体では保存のたびに約180MBのスキャンが2系統(Firestore/IndexedDB)で走り、
+//   iPhoneがメモリとCPUで落ちていた。中身の保存内容は変えないので読み込み側は無変更。
+const _monLite = (m) => {
+  if (!m || (!m.imageDataUrl && !m.originalPhoto)) return m;
+  const { imageDataUrl, originalPhoto, ...rest } = m;
+  rest._imgLen = imageDataUrl ? imageDataUrl.length : 0;
+  rest._photoLen = originalPhoto ? originalPhoto.length : 0;
+  return rest;
+};
+window._monLite = _monLite;
 const _monDocKey = (id) => 'mon_' + String(id).replace(/[/.]/g, '_');
 
 // インデックスを読み込み（あれば差分モードON）
@@ -382,20 +394,24 @@ const _fsSaveCollectionDiff = async (collectionJson, onProgress) => {
   if (Array.isArray(collectionJson)) arr = collectionJson;
   else { try { arr = JSON.parse(collectionJson); } catch (_) { return; } }
   if (!Array.isArray(arr)) return;
-  const prev = (window._monIndex && window._monIndex.hashes) || {};
-  const newIdx = { ids: [], hashes: {} };
+  // v2.86.0: ハッシュは画像を除いた軽量版から取る（全件の画像走査をやめる）
+  const prevIdx = window._monIndex || null;
+  const prev = (prevIdx && prevIdx.hashes) || {};
+  // 旧ハッシュ方式(v指定なし)からの移行時は、既存分は書き込み済みとみなして再送しない
+  const migrating = !!prevIdx && prevIdx.v !== 2;
+  const newIdx = { v: 2, ids: [], hashes: {} };
   const toWrite = [];
   for (const m of arr) {
     if (!m || m.id == null) continue;
-    const s = JSON.stringify(m);
-    const h = _monHash(s);
+    const h = _monHash(JSON.stringify(_monLite(m)));
     newIdx.ids.push(m.id);
     newIdx.hashes[m.id] = h;
-    if (prev[m.id] !== h) toWrite.push({ id: m.id, s });
+    const changed = migrating ? !(m.id in prev) : (prev[m.id] !== h);
+    if (changed) toWrite.push(m); // 巨大文字列は書き込み直前まで作らない
   }
   let done = 0;
   for (const w of toWrite) {
-    await _fsSet(_monDocKey(w.id), w.s);
+    await _fsSet(_monDocKey(w.id), JSON.stringify(w));
     done++;
     if (onProgress) onProgress(done, toWrite.length);
     await new Promise(r => setTimeout(r, 150));
@@ -713,14 +729,16 @@ window._idb = (function () {
     if (!Array.isArray(arr) || arr.length === 0) return;
     const prev = await _idbMonIndex();
     const prevH = prev.hashes || {};
-    const newIdx = { ids: [], hashes: {} };
+    // v2.86.0: ハッシュは画像を除いた軽量版から取る（全件の画像走査をやめる）
+    const migrating = Array.isArray(prev.ids) && prev.ids.length > 0 && prev.v !== 2;
+    const newIdx = { v: 2, ids: [], hashes: {} };
     for (const m of arr) {
       if (!m || m.id == null) continue;
-      const s = JSON.stringify(m);
-      const h = _idbHash(s);
+      const h = _idbHash(JSON.stringify(window._monLite ? window._monLite(m) : m));
       newIdx.ids.push(m.id);
       newIdx.hashes[m.id] = h;
-      if (prevH[m.id] !== h) await set('idb-mon:' + m.id, s);
+      const changed = migrating ? !(m.id in prevH) : (prevH[m.id] !== h);
+      if (changed) await set('idb-mon:' + m.id, JSON.stringify(m));
     }
     // 削除された石モンのレコードを掃除
     for (const oldId of Object.keys(prevH)) {
@@ -824,7 +842,7 @@ const formatPlace = (name) => {
   if (pref && muni) return pref + ' ' + muni;
   return pref || name || '';
 };
-const APP_VERSION = '2.85.0';
+const APP_VERSION = '2.86.0';
 const IS_BETA = true; // §3: ベータ版フラグ
 
 // ===== ポリシー・規約のバージョン管理 (v2.13.0で追加) =====
